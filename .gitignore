@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.claude-whip/
+*.tgz
