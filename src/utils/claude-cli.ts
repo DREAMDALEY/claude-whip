@@ -1,8 +1,8 @@
-import { execaCommand } from 'execa';
+import { execa } from 'execa';
 
 export async function detectClaude(): Promise<string | null> {
   try {
-    const { stdout } = await execaCommand('claude --version', { shell: true });
+    const { stdout } = await execa('claude', ['--version']);
     return stdout.trim();
   } catch {
     return null;
@@ -47,9 +47,8 @@ export async function runClaude(prompt: string, opts: {
 }): Promise<ClaudeResult> {
   const args = buildClaudeArgs(prompt, opts);
 
-  const { stdout } = await execaCommand(`claude ${args.map(a => `"${a}"`).join(' ')}`, {
+  const { stdout } = await execa('claude', args, {
     cwd: opts.cwd,
-    shell: true,
     timeout: 600_000,
   });
 

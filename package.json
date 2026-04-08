@@ -9,8 +9,10 @@
   "scripts": {
     "build": "tsup src/cli.tsx --format esm --outDir dist",
     "dev": "tsx src/cli.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
+  "files": ["dist", "bin", "README.md", "LICENSE"],
   "keywords": ["claude", "claude-code", "ai", "agents", "parallel", "orchestration", "cli"],
   "author": "Ethan Daley <ethandaley780@gmail.com>",
   "license": "MIT",

@@ -18,7 +18,6 @@ program
   .option('--agent-budget <dollars>', 'Max budget per agent in USD', '1.00')
   .option('--dry-run', 'Show decomposition plan without executing', false)
   .action(async (task: string, opts: any) => {
-    // Check Claude CLI
     const version = await detectClaude();
     if (!version) {
       console.error(chalk.red('\n  Claude Code CLI not found.'));
@@ -27,21 +26,21 @@ program
       process.exit(1);
     }
 
-    console.log(chalk.gray(`  Claude CLI: ${version}`));
-
+    const interactive = process.stdin.isTTY === true;
     const whipLevel = parseInt(opts.whip, 10);
     const budget = parseFloat(opts.budget);
     const agentBudget = parseFloat(opts.agentBudget);
 
-    if (whipLevel < 1) {
-      console.error(chalk.red('  Whip level must be at least 1'));
+    if (isNaN(whipLevel) || isNaN(budget) || isNaN(agentBudget)) {
+      console.error(chalk.red('\n  Invalid numeric option. --whip, --budget, and --agent-budget must be numbers.\n'));
       process.exit(1);
     }
 
     console.log('');
-    console.log(chalk.red.bold('  🔥 claude-whip'));
+    console.log(chalk.red.bold('  claude-whip'));
     console.log(chalk.gray(`  Task: ${task}`));
     console.log(chalk.gray(`  Whip level: ${whipLevel} | Model: ${opts.model} | Budget: $${budget}`));
+    console.log(chalk.gray(`  Mode: ${interactive ? 'interactive (press w to whip, q to quit)' : 'headless'}`));
     console.log('');
 
     const { waitUntilExit } = render(
@@ -52,7 +51,9 @@ program
         agentBudget={agentBudget}
         totalBudget={budget}
         dryRun={opts.dryRun}
-      />
+        interactive={interactive}
+      />,
+      { exitOnCtrlC: true }
     );
 
     await waitUntilExit();

@@ -54,7 +54,8 @@ export class Orchestrator {
 
   private emit() {
     this.state.totalCost = this.state.agents.reduce((sum, a) => sum + a.cost, 0);
-    for (const fn of this.listeners) fn({ ...this.state });
+    const snapshot = { ...this.state, agents: this.state.agents.map(a => ({ ...a })) };
+    for (const fn of this.listeners) fn(snapshot);
   }
 
   getState(): WhipState {
@@ -62,8 +63,8 @@ export class Orchestrator {
   }
 
   async whip() {
-    this.state.whipLevel++;
     if (this.state.status === 'running') return; // can't whip while running
+    this.state.whipLevel++;
     await this.run();
   }
 
@@ -115,39 +116,37 @@ export class Orchestrator {
     this.state.status = 'running';
     this.emit();
 
-    // Run agents in parallel (capped at maxConcurrent)
-    const running: Promise<Agent>[] = [];
-    const queue = [...agents];
+    try {
+      // Run agents in parallel (capped at maxConcurrent)
+      const queue = [...agents];
+      let running = 0;
+      await new Promise<void>((resolve) => {
+        const runNext = () => {
+          if (queue.length === 0 && running === 0) { resolve(); return; }
+          while (queue.length > 0 && running < this.maxConcurrent) {
+            const agent = queue.shift()!;
+            running++;
+            runAgent(agent, { budget: this.agentBudget, model: this.model })
+              .then(() => { this.emit(); running--; runNext(); })
+              .catch(() => { this.emit(); running--; runNext(); });
+          }
+        };
+        runNext();
+      });
 
-    const runNext = async () => {
-      while (queue.length > 0 && running.length < this.maxConcurrent) {
-        const agent = queue.shift()!;
-        const promise = runAgent(agent, {
-          budget: this.agentBudget,
-          model: this.model,
-        }).then(a => {
-          this.emit();
-          return a;
-        });
-        running.push(promise);
+      // Merge results
+      if (this.state.isGit && this.state.repoRoot) {
+        this.state.status = 'merging';
+        this.emit();
+
+        this.state.mergeResult = await mergeAgents(agents, this.state.repoRoot);
       }
-    };
-
-    await runNext();
-    await Promise.all(running);
-
-    // Merge results
-    if (this.state.isGit && this.state.repoRoot) {
-      this.state.status = 'merging';
-      this.emit();
-
-      this.state.mergeResult = await mergeAgents(agents, this.state.repoRoot);
-    }
-
-    // Cleanup worktrees
-    for (const agent of agents) {
-      if (agent.worktreePath && agent.worktreePath !== this.state.repoRoot) {
-        await removeWorktree(agent.worktreePath);
+    } finally {
+      // Cleanup worktrees
+      for (const agent of agents) {
+        if (agent.worktreePath && agent.worktreePath !== this.state.repoRoot) {
+          await removeWorktree(agent.worktreePath);
+        }
       }
     }
 

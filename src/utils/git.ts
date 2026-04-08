@@ -1,9 +1,10 @@
-import { execaCommand } from 'execa';
+import { execa } from 'execa';
 import path from 'path';
+import { nanoid } from 'nanoid';
 
 export async function isGitRepo(dir: string): Promise<boolean> {
   try {
-    await execaCommand('git rev-parse --git-dir', { cwd: dir, shell: true });
+    await execa('git', ['rev-parse', '--git-dir'], { cwd: dir });
     return true;
   } catch {
     return false;
@@ -11,25 +12,20 @@ export async function isGitRepo(dir: string): Promise<boolean> {
 }
 
 export async function getRepoRoot(dir: string): Promise<string> {
-  const { stdout } = await execaCommand('git rev-parse --show-toplevel', {
-    cwd: dir,
-    shell: true,
-  });
+  const { stdout } = await execa('git', ['rev-parse', '--show-toplevel'], { cwd: dir });
   return stdout.trim();
 }
 
 export async function createWorktree(repoRoot: string, agentId: string): Promise<string> {
-  const worktreePath = path.join(repoRoot, '.claude-whip', agentId);
-  await execaCommand(`git worktree add "${worktreePath}" HEAD --detach`, {
-    cwd: repoRoot,
-    shell: true,
-  });
+  const agentSlug = agentId.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const worktreePath = path.join(repoRoot, '.claude-whip', `${agentSlug}-${nanoid(4)}`);
+  await execa('git', ['worktree', 'add', worktreePath, 'HEAD', '--detach'], { cwd: repoRoot });
   return worktreePath;
 }
 
 export async function removeWorktree(worktreePath: string): Promise<void> {
   try {
-    await execaCommand(`git worktree remove "${worktreePath}" --force`, { shell: true });
+    await execa('git', ['worktree', 'remove', worktreePath, '--force']);
   } catch {
     // best effort cleanup
   }
@@ -37,11 +33,8 @@ export async function removeWorktree(worktreePath: string): Promise<void> {
 
 export async function getChangedFiles(worktreePath: string): Promise<string[]> {
   try {
-    const { stdout } = await execaCommand('git diff --name-only HEAD', {
-      cwd: worktreePath,
-      shell: true,
-    });
-    return stdout.trim().split('\n').filter(Boolean);
+    const { stdout } = await execa('git', ['status', '--porcelain'], { cwd: worktreePath });
+    return stdout.trim().split('\n').filter(Boolean).map(line => line.substring(3).trim());
   } catch {
     return [];
   }
@@ -49,9 +42,9 @@ export async function getChangedFiles(worktreePath: string): Promise<string[]> {
 
 export async function commitWorktree(worktreePath: string, message: string): Promise<string | null> {
   try {
-    await execaCommand('git add -A', { cwd: worktreePath, shell: true });
-    await execaCommand(`git commit -m "${message}"`, { cwd: worktreePath, shell: true });
-    const { stdout } = await execaCommand('git rev-parse HEAD', { cwd: worktreePath, shell: true });
+    await execa('git', ['add', '-A'], { cwd: worktreePath });
+    await execa('git', ['commit', '-m', message], { cwd: worktreePath });
+    const { stdout } = await execa('git', ['rev-parse', 'HEAD'], { cwd: worktreePath });
     return stdout.trim();
   } catch {
     return null;
@@ -60,7 +53,7 @@ export async function commitWorktree(worktreePath: string, message: string): Pro
 
 export async function cherryPick(repoRoot: string, sha: string): Promise<boolean> {
   try {
-    await execaCommand(`git cherry-pick ${sha}`, { cwd: repoRoot, shell: true });
+    await execa('git', ['cherry-pick', sha], { cwd: repoRoot });
     return true;
   } catch {
     return false;

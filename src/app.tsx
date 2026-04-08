@@ -12,9 +12,26 @@ interface AppProps {
   agentBudget: number;
   totalBudget: number;
   dryRun: boolean;
+  interactive: boolean;
 }
 
-export function App({ task, whipLevel, model, agentBudget, totalBudget, dryRun }: AppProps) {
+function KeyboardHandler({ orchestrator, state }: { orchestrator: Orchestrator; state: WhipState | null }) {
+  const { exit } = useApp();
+
+  useInput((input, key) => {
+    if (input === 'q' || (key.ctrl && input === 'c')) {
+      exit();
+      process.exit(0);
+    }
+    if (input === 'w' && state?.status === 'done') {
+      orchestrator.whip().catch(console.error);
+    }
+  });
+
+  return null;
+}
+
+export function App({ task, whipLevel, model, agentBudget, totalBudget, dryRun, interactive }: AppProps) {
   const { exit } = useApp();
   const [state, setState] = useState<WhipState | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -26,8 +43,13 @@ export function App({ task, whipLevel, model, agentBudget, totalBudget, dryRun }
   }));
 
   useEffect(() => {
-    orchestrator.onStateChange(setState);
-    orchestrator.run();
+    orchestrator.onStateChange((s) => {
+      setState(s);
+      if (s.status === 'done' && !interactive) {
+        setTimeout(() => { exit(); }, 100);
+      }
+    });
+    orchestrator.run().catch(err => { console.error('Error:', err.message); exit(); });
   }, []);
 
   useEffect(() => {
@@ -38,26 +60,18 @@ export function App({ task, whipLevel, model, agentBudget, totalBudget, dryRun }
     return () => clearInterval(timer);
   }, []);
 
-  useInput((input, key) => {
-    if (input === 'q' || (key.ctrl && input === 'c')) {
-      exit();
-      process.exit(0);
-    }
-    if (input === 'w' && state?.status === 'done') {
-      orchestrator.whip();
-    }
-  });
-
   if (!state) {
     return <Text color="yellow">Initializing...</Text>;
   }
 
-  const canWhip = state.status === 'done';
+  const canWhip = state.status === 'done' && interactive;
   const doneCount = state.agents.filter(a => a.status === 'done').length;
   const totalCount = state.agents.length;
 
   return (
     <Box flexDirection="column">
+      {interactive && <KeyboardHandler orchestrator={orchestrator} state={state} />}
+
       <Header
         whipLevel={state.whipLevel}
         totalCost={state.totalCost}
@@ -94,7 +108,7 @@ export function App({ task, whipLevel, model, agentBudget, totalBudget, dryRun }
       {state.mergeResult && (
         <Box flexDirection="column" paddingX={1} marginY={1}>
           <Text bold color={state.mergeResult.success ? 'green' : 'red'}>
-            {state.mergeResult.success ? '✓ All agents merged' : '⚠ Merge conflicts'}
+            {state.mergeResult.success ? 'All agents merged' : 'Merge conflicts'}
           </Text>
           <Text color="gray">
             {state.mergeResult.merged.length} merged | {state.mergeResult.conflicts.length} conflicts | {state.mergeResult.totalFiles} files
@@ -110,7 +124,7 @@ export function App({ task, whipLevel, model, agentBudget, totalBudget, dryRun }
         </Box>
       )}
 
-      <StatusBar canWhip={canWhip} canMerge={false} />
+      {interactive && <StatusBar canWhip={canWhip} canMerge={false} />}
     </Box>
   );
 }
